@@ -231,11 +231,32 @@ function table.tostring(t, ...)
    -- anyway.
    if LINE_MAX == math.huge then xlen = function() return 0 end end
 
+
+   local tostring_cache = { }
+   local function __tostring(x)
+      local the_string = tostring_cache[x]
+      if the_string~=nil then return the_string end
+      local mt = getmetatable(x)
+      if mt then 
+          local __tostring = mt.__tostring
+          if __tostring then
+              the_string = __tostring(x)
+              tostring_cache[x] = the_string
+              return the_string
+          end
+      end
+      if x~=nil then tostring_cache[x] = false end -- nil is an illegal key
+      return false
+   end
+
    xlen_type["nil"] = function () return 3 end
    function xlen_type.number  (x) return #tostring(x) end
    function xlen_type.boolean (x) return x and 4 or 5 end
    function xlen_type.string  (x) return #string.format("%q",x) end
    function xlen_type.table   (adt, nested)
+
+      local custom_string = __tostring(adt)
+      if custom_string then return #custom_string end
 
       -- Circular references detection
       if nested [adt] then return #tostring(adt) end
@@ -287,7 +308,6 @@ function table.tostring(t, ...)
       local x = { }
       x["nil"] = function() acc "nil" end
       function x.number()   acc (tostring (adt)) end
-      --function x.string()   acc (string.format ("%q", adt)) end
       function x.string()   acc ((string.format ("%q", adt):gsub("\\\n", "\\n"))) end
       function x.boolean()  acc (adt and "true" or "false") end
       function x.table()
@@ -366,8 +386,11 @@ function table.tostring(t, ...)
          end
          nested[adt] = false -- No more nested calls
       end
-      local y = x[type(adt)]
-      if y then y() else acc(tostring(adt)) end
+      local custom_string = __tostring(adt)
+      if custom_string then acc(custom_string) else
+         local y = x[type(adt)]
+         if y then y() else acc(tostring(adt)) end
+     end
    end
    --printf("INITIAL_INDENT = %i", INITIAL_INDENT)
    current_offset = INITIAL_INDENT or 0
