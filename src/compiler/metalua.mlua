@@ -204,8 +204,8 @@ local function main (...)
    if cfg.sharpbang then
       local shbang = cfg.sharpbang
       verb_print ("Adding sharp-bang directive %q", shbang)
-      if not shbang :strmatch'^#!' then shbang = '#!' .. shbang end
-      if not shbang :strmatch'\n$' then shbang = shbang .. '\n' end
+      if not string.strmatch(shbang, '^#!') then shbang = '#!' .. shbang end
+      if not string.strmatch(shbang, '\n$') then shbang = shbang .. '\n' end
       bytecode = shbang .. bytecode
    end
 
@@ -234,7 +234,7 @@ local function main (...)
 
       runargs = table.icat(cfg.params or { }, runargs)
       local function print_traceback (errmsg)
-         return errmsg .. '\n' .. debug.traceback ('',2) .. '\n'
+         return errmsg -- .. '\n' .. debug.traceback ('',2) .. '\n'
       end
       local st, msg = xpcall(|| f(unpack (runargs)), print_traceback)
       if not st then

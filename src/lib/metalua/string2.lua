@@ -33,7 +33,7 @@ string.strmatch = string["match"]
 
 -- change a compiled string into a function
 function string.undump(str)
-   if str:strmatch '^\027LuaQ' or str:strmatch '^#![^\n]+\n\027LuaQ' then
+   if string.strmatch(str, '^\027LuaQ') or string.strmatch(str, '^#![^\n]+\n\027LuaQ') then
       local f = (lua_loadstring or loadstring)(str)
       return f
    else

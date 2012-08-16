@@ -92,7 +92,7 @@ function values (x)
    return iterator, { list = x }
 end
 
-function keys (x)
+local function keys (x)
    assert(type(x)=='table', 'keys() expects a table')
    local function iterator (state)
       local it = next(state.list, state.content)
@@ -102,3 +102,42 @@ function keys (x)
    return iterator, { list = x }
 end
 
+-- REALLY REALLY dirty hack.
+-- ComputerCraft defines an table called 'keys' for storing key codes.
+-- This sorta prevents a conflict there.
+if _G.keys and type(_G.keys) == "table" then
+  local newKeys = {}
+  for k, v in pairs(_G.keys) do
+    newKeys[k] = v
+  end
+  setmetatable(newKeys, {__call = keys})
+  _G.keys = newKeys
+else
+  _G.keys = keys
+end
+
+local fakeEventName = "metalua-fake-event"
+local function yield()
+  os.queueEvent(fakeEventName)
+  while true do
+    local event = {coroutine.yield()}
+    if event[1] == fakeEventName then
+      return
+    else
+      os.queueEvent(unpack(event))
+    end
+  end
+end
+if os.version then
+  local yieldAt = os.clock()
+  function tryYield()
+    if os.clock() > yieldAt then
+      yield()
+      yieldAt = os.clock()
+    end
+  end
+else
+  function tryYield()
+    -- Do nothing
+  end
+end

@@ -102,13 +102,13 @@ function clopts(cfg)
             print_usage ("missing parameter for option "..flag..opt)
             return false
          end
-         if etype:strmatch '^number' then 
+         if string.strmatch(etype, '^number') then 
             arg = tonumber(arg)
             if not arg then 
                print_usage ("option "..flag..opt.." expects a number argument")
             end
          end
-         if etype:strmatch '%*$' then 
+         if string.strmatch(etype, '%*$') then 
             if not cfg[name] then cfg[name]={ } end
             table.insert(cfg[name], arg)
          else cfg[name] = arg end
@@ -151,7 +151,7 @@ function clopts(cfg)
          -----------------------------------------------------------------------
          -- double dash option
          -----------------------------------------------------------------------
-         flag, opt = arg:strmatch "^(%-%-)(.*)"
+         flag, opt = string.strmatch(arg, "^(%-%-)(.*)")
          if opt then
             i=actionate (cfg, long, flag, opt, i, args)
             -{ `Goto 'continue' }
@@ -160,7 +160,7 @@ function clopts(cfg)
          -----------------------------------------------------------------------
          -- double plus option
          -----------------------------------------------------------------------
-         flag, opt = arg:strmatch "^(%+%+)(.*)"
+         flag, opt = string.strmatch(arg, "^(%+%+)(.*)")
          if opt then
             i=actionate (cfg, long, flag, opt, i, args)
             -{ `Goto 'continue' }
@@ -169,7 +169,7 @@ function clopts(cfg)
          -----------------------------------------------------------------------
          -- single plus or single dash series of short options
          -----------------------------------------------------------------------
-         flag, opts = arg:strmatch "^([+-])(.+)"
+         flag, opts = string.strmatch(arg, "^([+-])(.+)")
          if opts then 
             local j_max, i2 = opts:len()
             for j = 1, j_max do

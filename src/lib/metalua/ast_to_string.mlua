@@ -78,7 +78,7 @@ local keywords = table.transpose {
 -- Return true iff string `id' is a legal identifier name.
 --------------------------------------------------------------------------------
 local function is_ident (id)
-   return id:strmatch "^[%a_][%w_]*$" and not keywords[id]
+   return string.strmatch(id, "^[%a_][%w_]*$") and not keywords[id]
 end
 
 --------------------------------------------------------------------------------

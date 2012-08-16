@@ -44,7 +44,7 @@ if [ -z ${LUAC} ] ; then echo "Error: no lua compiler found"; fi
 
 if [ -f ~/.metaluabuildrc ] ; then . ~/.metaluabuildrc; fi
 
-if [ -z "$LINEREADER" ] && which -s rlwrap; then LINEREADER=rlwrap; fi
+if [ -z "$LINEREADER" ] && which rlwrap; then LINEREADER=rlwrap; fi
 
 echo '*** Lua paths setup ***'
 
@@ -61,12 +61,21 @@ cp -Rp lib/* ${BUILD_LIB}/
 echo '*** Generate a callable metalua shell script ***'
 
 cat > ${BUILD_BIN}/metalua <<EOF
-#!/bin/sh
+REM=error"This program is meant to be executed in an Unix shell"--[[
 export LUA_PATH='?.luac;?.lua;${BUILD_LIB}/?.luac;${BUILD_LIB}/?.lua'
 export LUA_MPATH='?.mlua;${BUILD_LIB}/?.mlua'
 ${LUA} ${BUILD_LIB}/metalua.luac \$*
+#--]]
 EOF
 chmod a+x ${BUILD_BIN}/metalua
+
+echo '*** Copy static files ***'
+rm -rf ${BUILD}/dist-data
+cp -r static ${BUILD}/dist-data
+
+echo '*** Copy readme and license ***'
+cp ../LICENSE ${BUILD}
+cp ../README.TXT ${BUILD}
 
 echo '*** Compiling the parts of the compiler written in plain Lua ***'
 
@@ -86,7 +95,7 @@ ${BUILD_BIN}/metalua -vb -f compiler/mlc.mlua     -o ${BUILD_LIB}/metalua/mlc.lu
 ${BUILD_BIN}/metalua -vb -f compiler/metalua.mlua -o ${BUILD_LIB}/metalua.luac
 
 echo '*** Precompile metalua libraries ***'
-for SRC in $(find ${BUILD_LIB} -name '*.mlua'); do
+for SRC in $(find ${BUILD_LIB} -name '*.mlua' | sort); do
     DST=$(dirname $SRC)/$(basename $SRC .mlua).luac
     if [ $DST -nt $SRC ]; then
         echo "+ $DST already up-to-date"
@@ -96,33 +105,60 @@ for SRC in $(find ${BUILD_LIB} -name '*.mlua'); do
     fi
 done
 
-echo '*** Generate make-install.sh script ***'
+echo '*** Generate distribution building script ***'
+cat > ${BUILD_BIN}/make-dist.sh <<EOF
+REM=error"This program is meant to be executed in an Unix shell"--[[
+echo "*** Create temp directory ***"
+mkdir metalua-cc
 
-cat > make-install.sh <<EOF2
-#!/bin/sh
-mkdir -p ${INSTALL_BIN}
-mkdir -p ${INSTALL_LIB}
-if [ -n "${DESTDIR}" ]; then
-    mkdir -p ${DESTDIR}${INSTALL_BIN}
-    mkdir -p ${DESTDIR}${INSTALL_LIB}
-fi
-cat > ${DESTDIR}${INSTALL_BIN}/metalua <<EOF
-#!/bin/sh
-METALUA_LIB=${INSTALL_LIB}
-export LUA_PATH="?.luac;?.lua;\\\${METALUA_LIB}/?.luac;\\\${METALUA_LIB}/?.lua"
-export LUA_MPATH="?.mlua;\\\${METALUA_LIB}/?.mlua"
-exec ${LINEREADER} ${LUA} \\\${METALUA_LIB}/metalua.luac "\\\$@"
-EOF
+echo "*** Copy distribution files ***"
+cp -r dist-data metalua-cc/data
+cp -r lib metalua-cc/data
+cp LICENSE README.TXT metalua-cc
 
-chmod a+x ${DESTDIR}${INSTALL_BIN}/metalua
-
-cp -pR ${BUILD_LIB}/* ${DESTDIR}${INSTALL_LIB}/
-
-echo "metalua libs installed in ${INSTALL_LIB};"
-echo "metalua executable in ${INSTALL_BIN}."
+echo "*** Create installation script ***"
+cat > metalua-cc/install <<EOF2
+print("== Metalua installer ==")
+print("")
+write("Install? [Yn] ")
+local path = fs.combine(shell.getRunningProgram(), "..")
+local function install(pathB)
+  local newPath = fs.combine(fs.combine(path, "data"), pathB)
+  print("[copy] "..newPath.." -> "..pathB)
+  fs.copy(newPath, pathB)
+end
+if read() ~= "n" then
+  print("*** Install new files ***")
+  install("lib")
+  install("autorun")
+  install("bin")
+  print("*** Install startup script***")
+  if fs.exists("startup") then
+    fs.move("startup", "autorun/__startup.lua")
+    print("[copy] startup -> autorun/__startup.lua")
+    print("[delete] startup")
+  end
+  install("startup")
+  print("")
+  print("Metalua files installed! Reboot to complete installation.")
+  print("")
+else
+  print("Installation canceled")
+end
 EOF2
-chmod a+x make-install.sh
+
+echo "*** Archive distribution ***"
+rm -f metalua-cc.zip 
+zip -r metalua-cc.zip metalua-cc
+rm -r metalua-cc
+
+echo ""
+echo "Distribution built."
+echo ""
+#--]]
+EOF
+chmod +x ${BUILD_BIN}/make-dist.sh
 
 echo
-echo "Build completed, proceed to installation with './make-install.sh' or 'sudo ./make-install.sh'"
+echo "Build completed. Run \"bin/make-dist.sh\" in the build directory to create a distribution."
 echo

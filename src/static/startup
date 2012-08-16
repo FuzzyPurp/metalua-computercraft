@@ -1,0 +1,11 @@
+local list = fs.list("autorun")
+table.sort(list)
+for i, path in ipairs(list) do
+  local path = "autorun/"..path
+  if fs.isDir(path) then
+    shell.run(path.."/startup.lua")
+  else
+    shell.run(path)
+  end
+end
+shell.setPath(shell.path()..":/bin")

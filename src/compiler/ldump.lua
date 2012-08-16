@@ -60,6 +60,8 @@ module("bytecode", package.seeall)
 
 format = { }
 format.header = string.dump(function()end):sub(1, 12)
+-- HACK - LuaJ is big endian, but, can read little endian files.
+format.header = format.header:sub(1,6).."\1"..format.header:sub(8)
 format.little_endian, format.int_size, 
 format.size_t_size,   format.instr_size, 
 format.number_size,   format.integral = format.header:byte(7, 12)
@@ -150,7 +152,7 @@ end
 function luaU:from_double(x)
   local function grab_byte(v)
     return math.floor(v / 256),
-           string.char(math.mod(math.floor(v), 256))
+           string.char(math.fmod(math.floor(v), 256))
   end
   local sign = 0
   if x < 0 then sign = 1; x = -x end
@@ -182,13 +184,13 @@ function luaU:from_int(x, size)
   x = math.floor(x)
   if x >= 0 then
     for i = 1, size do
-      v = v..string.char(math.mod(x, 256)); x = math.floor(x / 256)
+      v = v..string.char(math.fmod(x, 256)); x = math.floor(x / 256)
     end
   else -- x < 0
     x = -x
     local carry = 1
     for i = 1, size do
-      local c = 255 - math.mod(x, 256) + carry
+      local c = 255 - math.fmod(x, 256) + carry
       if c == 256 then c = 0; carry = 1 else carry = 0 end
       v = v..string.char(c); x = math.floor(x / 256)
     end

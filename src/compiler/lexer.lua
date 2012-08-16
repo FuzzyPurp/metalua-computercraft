@@ -30,7 +30,6 @@ module ("lexer", package.seeall)
 
 require 'metalua.runtime'
 
-
 lexer = { alpha={ }, sym={ } }
 lexer.__index=lexer
 
@@ -314,19 +313,22 @@ end
 ----------------------------------------------------------------------
 -- Add a keyword to the list of keywords recognized by the lexer.
 ----------------------------------------------------------------------
+
+-- FIXME - Replaced %p with ., because luaj disagrees with c lua as to what's
+--         a punctuation character
 function lexer:add (w, ...)
    assert(not ..., "lexer:add() takes only one arg, although possibly a table")
    if type (w) == "table" then
       for _, x in ipairs (w) do self:add (x) end
    else
       if w:match (self.patterns.word .. "$") then self.alpha [w] = true
-      elseif w:match "^%p%p+$" then 
+      elseif w:match "^..+$" then 
          local k = w:sub(1,1)
          local list = self.sym [k]
          if not list then list = { }; self.sym [k] = list end
          _G.table.insert (list, w)
-      elseif w:match "^%p$" then return
-      else error "Invalid keyword" end
+      elseif w:match "^.$" then return
+      else error("Invalid keyword: "..w) end
    end
 end
 

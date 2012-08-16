@@ -980,12 +980,17 @@ function stat.Label (fs, ast)
       -- Patch forward gotos which were targetting this label.
       ----------------------------------------------------------------
       for _, goto_pc in ipairs(gotos) do
-         local close_instr  = fs.f.code[goto_pc]
-         local jmp_instr    = fs.f.code[goto_pc+1]
-         local goto_nactvar = luaP:GETARG_A (close_instr)
-         if fs.nactvar < goto_nactvar then 
-            luaP:SETARG_A (close_instr, fs.nactvar) end
-         luaP:SETARG_sBx (jmp_instr, fs.pc - goto_pc - 2)
+         if fs.bl and fs.bl.upvar then
+            local close_instr  = fs.f.code[goto_pc]
+            local jmp_instr    = fs.f.code[goto_pc+1]
+            local goto_nactvar = luaP:GETARG_A (close_instr)
+            if fs.nactvar < goto_nactvar then 
+               luaP:SETARG_A (close_instr, fs.nactvar) end
+            luaP:SETARG_sBx (jmp_instr, fs.pc - goto_pc - 2)
+         else
+            local jmp_instr    = fs.f.code[goto_pc]
+            luaP:SETARG_sBx (jmp_instr, fs.pc - goto_pc - 1)
+         end
       end
       ----------------------------------------------------------------
       -- Gotos are patched, they can be forgotten about (when the
@@ -1028,7 +1033,9 @@ function stat.Goto (fs, ast)
       if not fs.forward_gotos[label_id] then 
          fs.forward_gotos[label_id] = { } end
       table.insert (fs.forward_gotos[label_id], fs.pc)
-      luaK:codeABC  (fs, "OP_CLOSE", fs.nactvar, 0, 0)
+      if fs.bl and fs.bl.upvar then
+         luaK:codeABC  (fs, "OP_CLOSE", fs.nactvar, 0, 0)
+      end
       luaK:codeAsBx (fs, "OP_JMP", 0, luaK.NO_JUMP)
    end
 end

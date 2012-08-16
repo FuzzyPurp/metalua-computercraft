@@ -13,6 +13,69 @@ mlc_xcall = { }
 local STACK_LINES_TO_CUT = 7
 
 --------------------------------------------------------------------------------
+-- Creates a basic sandbox meant to allow seperate environments. The purpose of
+-- it isn't really security, as it would be in many sandboxes, but, rather,
+-- simple isolation of environments
+--------------------------------------------------------------------------------
+--Not copied: _G, fs, os, getfenv, setfenv, load, loadstring
+require "metalua.mlc_require"
+local copied = {"string", "xpcall", "package", "tostring", "print", "os", 
+                "unpack", "require", "getfenv", "setmetatable", "next", 
+                "assert", "tonumber", "io", "rawequal", "collectgarbage", 
+                "getmetatable", "module", "rawset", "math", "debug", "pcall", 
+                "table", "newproxy", "type", "coroutine", "_G", "select", 
+                "gcinfo", "pairs", "rawget", "loadstring", "ipairs", "_VERSION",
+                "dofile", "setfenv", "load", "error", "loadfile", }
+local function sandboxFunc(func)
+  local table = {}
+  for i,k in ipairs(copied) do
+    table[k] = _G[k]
+  end
+  local function loaderWrapper(fun)
+    return function(...)
+      local fun, err = fun(...)
+      if type(fun) == "function" then
+        setfenv(fun, table)
+      end
+      return fun, err
+    end
+  end
+  table._G = table
+  table.load = loaderWrapper(load)
+  table.loadstring = loaderWrapper(loadstring)
+  table.loadfile = loaderWrapper(loadfile)
+  table.dofile = function(file)
+    if file == nil then
+      error("stdin execution not supported")
+    else
+      local fun, err = table.loadfile(file)
+      if fun then
+        fun()
+      else
+        error(err)
+      end
+    end
+  end
+  table.getfenv = function(level)
+    if level == 0 then
+      return table
+    elseif level == nil then
+      local fenv = getfenv(2)
+      return fenv -- tail calls munge stack call ids on luaj 
+    elseif type(level) == "number" then
+      local fenv = getfenv(level+1)
+      return fenv
+    else
+      return getfenv(level)
+    end
+  end
+  table.__debug_depth = (__debug_depth or 0) + 1
+  mlc_require.createRequireTable(table, package.path)
+
+  setfenv(func, table)
+end
+
+--------------------------------------------------------------------------------
 -- (Not intended to be called directly by users)
 --
 -- This is the back-end function, called in a separate lua process
@@ -30,43 +93,43 @@ local STACK_LINES_TO_CUT = 7
 --     * the ast file filled will either the serialized ast, or the
 --       error message.
 --------------------------------------------------------------------------------
-function mlc_xcall.server (luafilename, astfilename, metabugs)
+function mlc_xcall.server (luafilename, metabugs)
+   local function executer()
+      require 'metalua.compiler'
+      require 'serialize'
 
-   -- We don't want these to be loaded when people only do client-side business
-   require 'metalua.compiler'
-   require 'serialize'
+      mlc.metabugs = metabugs
 
-   mlc.metabugs = metabugs
+      -- compile the content of luafile name in an AST, serialized in astfilename
+      --local status, ast = pcall (mlc.luafile_to_ast, luafilename)
+      local status, ast
+      local function compile() return mlc.luafile_to_ast (luafilename) end
+      if mlc.metabugs then 
+         -- print 'mlc_xcall.server/metabugs'
+         --status, ast = xpcall (compile, debug.traceback)
+         --status, ast = xpcall (compile, debug.traceback)
+         local function tb(msg)
+            -- local r = debug.traceback(msg)
 
-   -- compile the content of luafile name in an AST, serialized in astfilename
-   --local status, ast = pcall (mlc.luafile_to_ast, luafilename)
-   local status, ast
-   local function compile() return mlc.luafile_to_ast (luafilename) end
-   if mlc.metabugs then 
-      print 'mlc_xcall.server/metabugs'
-      --status, ast = xpcall (compile, debug.traceback)
-      --status, ast = xpcall (compile, debug.traceback)
-      local function tb(msg)
-         local r = debug.traceback(msg)
+            -- Cut superfluous end lines
+            -- local line_re = '\n[^\n]*'
+            -- local re =  "^(.-)" .. (line_re) :rep (STACK_LINES_TO_CUT) .. "$"
+            -- return r :strmatch (re) or r
 
-         -- Cut superfluous end lines
-         local line_re = '\n[^\n]*'
-         local re =  "^(.-)" .. (line_re) :rep (STACK_LINES_TO_CUT) .. "$"
-         return r :strmatch (re) or r
-      end
-      --status, ast = xpcall (compile, debug.traceback)
-      status, ast = xpcall (compile, tb)
-   else status, ast = pcall (compile) end
-   local out = io.open (astfilename, 'w')
-   if status then -- success
-      out:write (serialize (ast))
-      out:close ()
-      os.exit (0)
-   else -- failure, `ast' is actually the error message
-      out:write (ast)
-      out:close ()
-      os.exit (-1)
-   end      
+            return msg
+         end
+         --status, ast = xpcall (compile, debug.traceback)
+         status, ast = xpcall (compile, tb)
+      else status, ast = pcall (compile) end
+      if status then -- success
+         return 0, ast
+      else -- failure, `ast' is actually the error message
+          print(ast)
+         return -1, ast
+      end      
+   end
+   sandboxFunc(executer)
+   return executer()
 end
 
 --------------------------------------------------------------------------------
@@ -77,26 +140,11 @@ end
 --  * the ast, or the error message.
 --------------------------------------------------------------------------------
 function mlc_xcall.client_file (luafile)
-
-   -- printf("\n\nmlc_xcall.client_file(%q)\n\n", luafile)
-
-   local tmpfilename = os.tmpname()
-   local cmd = string.format (
-      [=[lua -l metalua.mlc_xcall -e "mlc_xcall.server([[%s]], [[%s]], %s)"]=], 
-      luafile, tmpfilename, mlc.metabugs and "true" or "false")
-
-   -- printf("os.execute [[%s]]\n\n", cmd)
-
-   local status = (0 == os.execute (cmd))
-   local result -- ast or error msg
-   if status then 
-      result = (lua_loadfile or loadfile) (tmpfilename) ()
-   else
-      local f = io.open (tmpfilename)
-      result = f :read '*a'
-      f :close()
+   local status, result = mlc_xcall.server(luafile, mlc.metabugs)
+   status = status == 0
+   if type(result) == "function" then
+      result = setfenv(result, getfenv())()
    end
-   os.remove(tmpfilename)
    return status, result
 end
 

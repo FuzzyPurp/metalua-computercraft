@@ -39,6 +39,11 @@ mlc.order = table.transpose{
 -- The macro 'POINT(point_name, expected_type)' creates an entry point in the
 -- 'mlc.convert' function. When we convert a 'a' into a 'b', FIXME
 --------------------------------------------------------------------------------
+local function assert(v, e, l)
+  if not v then
+    error(e, l+1)
+  end
+end
 -{ block:
    jump_to_point = `If{ }
    function point_builder(args)
@@ -58,7 +63,7 @@ mlc.order = table.transpose{
          ---------------------------------------------------
          -- Check that the type matches
          ---------------------------------------------------
-         +{stat: assert (-{point_type} == type(x), "Invalid source type") },
+         +{stat: assert(-{point_type} == type(x), "Invalid source type (got "..type(x)..", expected "..-{point_type}..")", 2)}
          -- perform transformation operations to the next type
          }
    end
@@ -101,7 +106,7 @@ function mlc.convert (x, src_fmt, dst_fmt, name)
    then status, x = false, "Unexpected 'end' keyword" end
    if not status and x then 
       -- x = error msg; get rid of ???
-      x = x:strmatch "[^:]+:[0-9]+: (.*)" or x
+      x = string.strmatch(x, "[^:]+:[0-9]+: (.*)") or x
       local li = lx:lineinfo_left()
       error (string.format (
          "Parsing error in %s line %s, column %i, char %s: \n%s",
@@ -126,8 +131,8 @@ end
 -- xxx_of_yyy() or yyy_to_xxx().
 --------------------------------------------------------------------------------
 function mlc.__index(_, name)   
-   local  dst, src = name:strmatch '^([a-z]+)_of_([a-z]+)$'
-   if not dst then src, dst = name:strmatch '^([a-z]+)_to_([a-z]+)$' end
+   local  dst, src = string.strmatch(name, '^([a-z]+)_of_([a-z]+)$')
+   if not dst then src, dst = string.strmatch(name, '^([a-z]+)_to_([a-z]+)$') end
    if not (src and dst) then return nil end -- not a converter
    local  osrc, odst = mlc.order[src], mlc.order[dst] -- check existence of formats
    if not osrc then error ("unknown source format "..src) end
@@ -154,7 +159,9 @@ lua_loadfile = loadfile
 local lua_loadfile = loadfile
 
 function loadstring(str, name)
-   if type(str) ~= 'string' then error 'string expected' end
+   tryYield()
+
+   if type(str) ~= 'string' then error('string expected, got '..type(str), 2) end
    if str:match '^\027LuaQ' then return lua_loadstring(str) end
    local n = str:match '^#![^\n]*\n()'
    if n then str=str:sub(n, -1) end
@@ -163,16 +170,24 @@ function loadstring(str, name)
    if success then return f else return nil, f end
 end
 
-function loadfile(filename)
-   local f, err_msg = io.open(filename, 'rb')
-   if not f then return nil, err_msg end
-   local success, src = pcall( f.read, f, '*a')
-   pcall(f.close, f)
-   if success then return loadstring (src, '@'..filename)
-   else return nil, src end
+-- A ComputerCraft version of this code exists in the preloader.
+
+if not pcall(string.dump, loadfile) then
+   function loadfile(filename)
+      tryYield()
+
+      local f, err_msg = io.open(filename, 'rb')
+      if not f then return nil, err_msg end
+      local success, src = pcall( f.read, f, '*a')
+      pcall(f.close, f)
+      if success then return loadstring (src, '@'..filename)
+      else return nil, src end
+   end
 end
 
 function load(f, name)
+   tryYield()
+
    while true do
       local x = f()
       if not x then break end
@@ -183,12 +198,16 @@ function load(f, name)
 end
 
 function dostring(src)
+   tryYield()
+
    local f, msg = loadstring(src)
    if not f then error(msg) end
    return f()
 end
 
 function dofile(name)
+   tryYield()
+
    local f, msg = loadfile(name)
    if not f then error(msg) end
    return f()
